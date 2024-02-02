@@ -1,0 +1,1 @@
+# appi-for-stock-screen-analyser
