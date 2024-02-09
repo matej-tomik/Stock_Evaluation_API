@@ -60,9 +60,11 @@ def write_heade(files :Tuple[TextIOWrapper]):
         csv.writer(file).writerow(header_row)
 
 
-def analyse_stock(ticker: str, risk_free_rate: float) -> dict:
+def analyse_stock(ticker: str, risk_free_rate: float) -> Tuple[dict, bool]:
+    is_in_redis: bool = False
     if pepek.exists(ticker) and pepek.hget(ticker, 'date').decode('utf-8') == get_current_time:
-        return {key.decode('utf-8'): value.decode('utf-8') for key, value in pepek.hgetall(ticker).items()}    
+        is_in_redis: bool = True
+        return {key.decode('utf-8'): value.decode('utf-8') for key, value in pepek.hgetall(ticker).items()}, is_in_redis    
     security = StockFinancials(ticker, risk_free_rate)
     return{
         'graham_result':  security.graham_result,
@@ -76,7 +78,7 @@ def analyse_stock(ticker: str, risk_free_rate: float) -> dict:
         'country': security.country,
         'sector': security.sector,
         'industry': security.industry
-    }
+    }, is_in_redis
 
 
 class Item(BaseModel):
@@ -85,21 +87,22 @@ class Item(BaseModel):
 
 @app.get("/ticker")
 async def process_ticker(item: Item):
-    result = analyse_stock(item, get_risk_free_rate())
-    store_stock(result)
+    result, is_in_redis = analyse_stock(item, get_risk_free_rate())
+    if not is_in_redis:
+        store_stock(result)
     return result 
 
 
 @app.get("/tickers")
 async def evaluated_stock_list(list_of_tickers: List[Item]):
-    risk_free_rate = get_risk_free_rate()
     evaluated_stocks = {
         "results": {},
         "failed": {}
     }
     for ticker in list_of_tickers:
-        analysed_stock = analyse_stock(ticker, risk_free_rate)
-        store_stock(analyse_stock)
+        analysed_stock, is_in_redis = analyse_stock(ticker, get_risk_free_rate())
+        if not is_in_redis:
+            store_stock(analysed_stock)
         if [*analysed_stock.values()][:5].count('N/A') <= 2:
             evaluated_stocks['results'].update({analysed_stock['ticker']: analysed_stock})
         else:
