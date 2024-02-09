@@ -1,12 +1,16 @@
 from classes import StockFinancials
 import os
 import yfinance as yf
+import redis
 from fastapi import FastAPI, File, UploadFile, HTTPException
-from typing import List
+from typing import List, Tuple
 import csv
 from fastapi.responses import FileResponse
 from pathlib import Path
 import zipfile
+import datetime
+from io import TextIOWrapper
+
 
 
 
@@ -14,23 +18,67 @@ TREASURY_YLD_INDEX_TEN_YEAR: str = "^TNX"
 
 
 app = FastAPI()
+r= redis.Redis(host='localhost', port=6379, db=0)
 
 
-@app.post("/update_file")
-async def create_upload_file(file: UploadFile = File(...), ticker_column_name: str = ""):
-    file_path = f"./screens/{file.filename}"
-    # Save the uploaded file to the specified path
-    with open(file_path, "wb") as new_file:
-        new_file.write(file.file.read())
-    try:
-        zip_path = analyse_screen(file_path, ticker_column_name)
-        return FileResponse(zip_path, filename="csv_files.zip", media_type="application/zip")
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+def get_current_time():
+    return datetime.datetime.now().date()
 
 
-def evaluate_stock():
-    pass
+def zip_file(result_path: Path, failed_path: Path) -> Path:
+    zips_dir = Path("./zips")
+    zips_dir.mkdir(exist_ok=True)
+    zip_path = zips_dir / "files.zip"
+    with zipfile.ZipFile(zip_path, 'w') as zipf:
+        zipf.write(result_path / 'result.csv','result.csv')
+        zipf.write(failed_path / 'failed.csv','failed.csv')
+
+
+def remove_files_in_directory(directory_path):
+    files = os.listdir(directory_path)
+    for file in files:
+        file_path = os.path.join(directory_path, file)
+        if os.path.isfile(file_path):
+            os.remove(file_path)
+
+
+def get_risk_free_rate() -> float:
+    return round(yf.Ticker(TREASURY_YLD_INDEX_TEN_YEAR).info.get('regularMarketPreviousClose', 0.04) / 100, 4)
+
+
+
+def evaluate_stock(stock: dict):
+    if all(x > 2 for x in [*stock.values()][:5]):
+        stock.update({'date': get_current_time})
+        ticker = str(stock.pop('ticker')).lower()
+        if r.exists(ticker):
+            if r.hget(ticker, 'date').decode('utf-8') == get_current_time:
+                return
+            else:
+                for key, value in stock.items():
+                    r.hset(ticker, key, value)
+                return  
+        for key, value in stock.items():
+            r.hset(ticker, key, value)      
+    return
+
+
+def write_heade(files :Tuple[TextIOWrapper]):
+    header_row = [
+        "Graham number Result",
+        "DCF Advance Model Result",
+        "DDM Advance Model Result",
+        "DCF Simple Model Result",
+        "DDM Simple Model Result",
+        "Ticker symbol",
+        "Name",
+        "Market Cap",
+        "Country",
+        "Sector",
+        "Industry"
+    ]
+    for file in files:
+        csv.writer(file).writerow(header_row)
 
 
 def analyse_stock(ticker: str, risk_free_rate: float) -> dict:
@@ -50,6 +98,22 @@ def analyse_stock(ticker: str, risk_free_rate: float) -> dict:
     }
 
 
+def get_evaluated_stock_list(list_of_tickers:List[str]) -> dict[str, dict]:
+    risk_free_rate = get_risk_free_rate()
+    evaluated_stocks = {
+        "results": {},
+        "failed": {}
+    }
+    for ticker in list_of_tickers:
+        analysed_stock = analyse_stock(ticker, risk_free_rate)
+        if [*analysed_stock.values()][:5].count('N/A') <= 2:
+            evaluated_stocks['results'].update({analysed_stock['ticker']: analysed_stock})
+            evaluate_stock(analysed_stock)
+        else:
+            evaluated_stocks['failed'].update({analysed_stock['ticker']: analysed_stock})
+    return evaluated_stocks
+
+
 def analyse_screen(file_path: str, ticker_column_name: str):
     if not os.path.exists(file_path):
         raise HTTPException(status_code=404, detail="File not found")
@@ -59,44 +123,35 @@ def analyse_screen(file_path: str, ticker_column_name: str):
 
     index: int = headers.index(ticker_column_name)
 
-    filed_dir = Path("./failed")
-    filed_dir.mkdir(exist_ok=True)
-    results_dir = Path("./results")
-    results_dir.mkdir(exist_ok=True)
-    with open(results_dir / 'result.csv', mode='w', newline='') as result:
-        with open(filed_dir / 'failed.csv', mode='w', newline='') as failed:
-            csv.writer(result).writerow(["Graham number Result,DCF Advance Model Result,DDM Advance Model Result,DCF Simple Model Result,DDM Simple Model Result,Ticker symbol,Name,Market Cap, Country,Sector,Industry"])
-            csv.writer(failed).writerow(["Graham number Result,DCF Advance Model Result,DDM Advance Model Result,DCF Simple Model Result,DDM Simple Model Result,Ticker symbol,Name,Market Cap, Country,Sector,Industry"])
-            risk_free_rate: float = yf.Ticker(TREASURY_YLD_INDEX_TEN_YEAR).info.get('regularMarketPreviousClose', 0.04) / 100  # constant 0.04 get from sqeel ; )
+    filed_path = Path("./failed")
+    filed_path.mkdir(exist_ok=True)
+    result_path = Path("./results")
+    result_path.mkdir(exist_ok=True)
+    with open(result_path / 'result.csv', mode='w', newline='') as result:
+        with open(filed_path / 'failed.csv', mode='w', newline='') as failed:
+            write_heade((result, failed))
+            risk_free_rate = get_risk_free_rate()
             for stock in stocks:
                 analysed_stock = analyse_stock(stock[index],risk_free_rate)
                 file = failed
                 if [*analysed_stock.values()][:5].count('N/A') <= 2:
                     file = result
+                    evaluate_stock(analysed_stock)
                 csv.writer(file).writerow([','.join([str(value) for value in [*analysed_stock.values()]])])
 
-    zips_dir = Path("./zips")
-    zips_dir.mkdir(exist_ok=True)
-    zip_path = zips_dir / "files.zip"
-    with zipfile.ZipFile(zip_path, 'w') as zipf:
-        zipf.write(results_dir / 'result.csv','result.csv')
-        zipf.write(filed_dir / 'failed.csv','failed.csv')
-
-    return zip_path
+    return zip_file(result_path, filed_path)
 
 
-def get_screens() -> List[str]:
-    current_directory = os.path.dirname(os.path.realpath(__file__))
-    screens_directory = os.path.join(current_directory, "screens")
-    return [file for file in os.listdir(screens_directory) if os.path.isfile(os.path.join(screens_directory, file))]
-
-
-def remove_files_in_directory(directory_path):
-    files = os.listdir(directory_path)
-    for file in files:
-        file_path = os.path.join(directory_path, file)
-        if os.path.isfile(file_path):
-            os.remove(file_path)
+@app.get("/file_to_analise")
+async def create_upload_file(file: UploadFile = File(...), ticker_column_name: str = ""):
+    file_path = f"./screens/{file.filename}"
+    with open(file_path, "wb") as new_file:
+        new_file.write(file.file.read())
+    try:
+        zip_path = analyse_screen(file_path, ticker_column_name)
+        return FileResponse(zip_path, filename="csv_files.zip", media_type="application/zip")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @app.on_event("shutdown")
