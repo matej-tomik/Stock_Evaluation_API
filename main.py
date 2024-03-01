@@ -1,25 +1,16 @@
-from classes import StockFinancials
-import os
 import yfinance as yf
 import redis
-from fastapi import FastAPI, File, UploadFile, HTTPException
+from fastapi import FastAPI
 from typing import List, Tuple
-import csv
-from fastapi.responses import FileResponse
-from pathlib import Path
-import zipfile
 import datetime
-from io import TextIOWrapper
-from pydantic import BaseModel
-
-
+from stock_screen_analyser.classes import StockValuation
 
 
 TREASURY_YLD_INDEX_TEN_YEAR: str = "^TNX"
 
 
 app = FastAPI()
-pepek = redis.Redis(host='localhost', port=6379, db=0)
+redis_database = redis.Redis(host='localhost', port=6379, db=0)
 
 
 def get_current_time():
@@ -33,60 +24,33 @@ def get_risk_free_rate() -> float:
 def store_stock(stock: dict):
     stock.update({'date': get_current_time})
     ticker = str(stock.pop('ticker')).lower()
-    if pepek.exists(ticker) and pepek.hget(ticker, 'date').decode('utf-8') == get_current_time:
+    if redis_database.exists(ticker) and redis_database.hget(ticker, 'date').decode('utf-8') == get_current_time:
         return
     else:
         for key, value in stock.items():
-            pepek.hset(ticker, key, value)
+            redis_database.hset(ticker, key, value)
         return  
-
-
-
-def write_heade(files :Tuple[TextIOWrapper]):
-    header_row = [
-        "Graham number Result",
-        "DCF Advance Model Result",
-        "DDM Advance Model Result",
-        "DCF Simple Model Result",
-        "DDM Simple Model Result",
-        "Ticker symbol",
-        "Name",
-        "Market Cap",
-        "Country",
-        "Sector",
-        "Industry"
-    ]
-    for file in files:
-        csv.writer(file).writerow(header_row)
 
 
 def analyse_stock(ticker: str, risk_free_rate: float) -> Tuple[dict, bool]:
     is_in_redis: bool = False
-    if pepek.exists(ticker) and pepek.hget(ticker, 'date').decode('utf-8') == get_current_time:
+    if redis_database.exists(ticker) and redis_database.hget(ticker, 'date').decode('utf-8') == get_current_time:
         is_in_redis: bool = True
-        return {key.decode('utf-8'): value.decode('utf-8') for key, value in pepek.hgetall(ticker).items()}, is_in_redis    
-    security = StockFinancials(ticker, risk_free_rate)
-    return{
-        'graham_result':  security.graham_result,
-        'dcf_advance_result': security.dcf_advance_result,
-        'ddm_advance_result': security.ddm_advance_result,
-        'dcf_simple_result': security.dcf_simple_result,
-        'ddm_simple_result': security.ddm_simple_result,
+        return {key.decode('utf-8'): value.decode('utf-8') for key, value in redis_database.hgetall(ticker).items()}, is_in_redis    
+    security = StockValuation(ticker, risk_free_rate)
+    return {
+        'graham_num': security.graham_num,
+        'graham':  security.graham,
+        'dcf_advance': security.dcf_advanced,
+        'ddm_advance': security.ddm_advanced,
+        'dcf': security.dcf,
+        'ddm': security.ddm,
         'ticker': security.ticker,
-        'name': security.name,
-        'market_capital': security.market_capital,
-        'country': security.country,
-        'sector': security.sector,
-        'industry': security.industry
     }, is_in_redis
 
 
-class Item(BaseModel):
-    ticker: str = ''
-
-
 @app.get("/ticker")
-async def process_ticker(item: Item):
+async def process_ticker(item: str):
     result, is_in_redis = analyse_stock(item, get_risk_free_rate())
     if not is_in_redis:
         store_stock(result)
@@ -94,7 +58,7 @@ async def process_ticker(item: Item):
 
 
 @app.get("/tickers")
-async def evaluated_stock_list(list_of_tickers: List[Item]):
+async def evaluated_stock_list(list_of_tickers: List[str]):
     evaluated_stocks = {
         "results": {},
         "failed": {}
