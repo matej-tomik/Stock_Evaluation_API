@@ -4,6 +4,7 @@ from fastapi import FastAPI
 from typing import List, Tuple
 import datetime
 from stock_screen_analyser.classes import StockValuation
+from pydantic import BaseModel
 
 
 TREASURY_YLD_INDEX_TEN_YEAR: str = "^TNX"
@@ -24,21 +25,28 @@ def get_risk_free_rate() -> float:
 def store_stock(stock: dict):
     stock.update({'date': get_current_time})
     ticker = str(stock.pop('ticker')).lower()
-    if redis_database.exists(ticker) and redis_database.hget(ticker, 'date').decode('utf-8') == get_current_time:
-        return
-    else:
-        for key, value in stock.items():
-            redis_database.hset(ticker, key, value)
-        return  
+    print(stock)
+    if redis_database.exists(ticker) and redis_database.hget(ticker, 'date'):
+        if redis_database.hget(ticker, 'date').decode('utf-8') == get_current_time:
+            return
+    for key, value in stock.items():
+        print(ticker, key, value)
+        redis_database.hset(ticker, key, value)
+    return
 
 
 def analyse_stock(ticker: str, risk_free_rate: float) -> Tuple[dict, bool]:
-    is_in_redis: bool = False
-    if redis_database.exists(ticker) and redis_database.hget(ticker, 'date').decode('utf-8') == get_current_time:
-        is_in_redis: bool = True
-        return {key.decode('utf-8'): value.decode('utf-8') for key, value in redis_database.hgetall(ticker).items()}, is_in_redis    
+    # is_in_redis: bool = False
+    # if redis_database.exists(ticker) and redis_database.hget(ticker, 'date'):
+    #     print(redis_database.hget(ticker, 'date'), 'analyse stock')
+    #     if redis_database.hget(ticker, 'date').decode('utf-8') == get_current_time:
+    #         is_in_redis: bool = True
+    #         return {key.decode('utf-8'): value.decode('utf-8') for key, value in redis_database.hgetall(ticker).items()}, is_in_redis
     security = StockValuation(ticker, risk_free_rate)
-    return {
+    security.fetch_data()
+    security.evaluate()
+    print(security, security.result_set)
+    return ({
         'graham_num': security.graham_num,
         'graham':  security.graham,
         'dcf_advance': security.dcf_advanced,
@@ -46,24 +54,32 @@ def analyse_stock(ticker: str, risk_free_rate: float) -> Tuple[dict, bool]:
         'dcf': security.dcf,
         'ddm': security.ddm,
         'ticker': security.ticker,
-    }, is_in_redis
+    }, True)
+
+
+class Item(BaseModel):
+    item: str
 
 
 @app.get("/ticker")
-async def process_ticker(item: str):
-    result, is_in_redis = analyse_stock(item, get_risk_free_rate())
+async def process_ticker(item: Item):
+    result, is_in_redis = analyse_stock(item.item, get_risk_free_rate())
     if not is_in_redis:
         store_stock(result)
     return result 
 
 
-@app.get("/tickers")
-async def evaluated_stock_list(list_of_tickers: List[str]):
+class Items(BaseModel):
+    items: List[str]
+
+
+@app.post("/tickers")
+async def evaluated_stock_list(list_of_tickers: Items):
     evaluated_stocks = {
         "results": {},
         "failed": {}
     }
-    for ticker in list_of_tickers:
+    for ticker in list_of_tickers.items:
         analysed_stock, is_in_redis = analyse_stock(ticker, get_risk_free_rate())
         if not is_in_redis:
             store_stock(analysed_stock)
