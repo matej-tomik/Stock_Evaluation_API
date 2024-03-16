@@ -1,0 +1,3 @@
+[submodule "stock_screen_analyser"]
+	path = stock_screen_analyser
+	url = https://github.com/matej-tomik/stock_screen_analyser
