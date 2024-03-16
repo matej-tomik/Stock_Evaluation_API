@@ -10,14 +10,14 @@ with open('requirements.txt', 'r', encoding='utf-16') as f:
 
 
 setup(
-    name='stock api',
+    name='Stock_Evaluation_API',
     version=VERSION,
     author="Matěj Tomík",
     author_email="<mtomik.work@gmail.com>",
     description=DESCRIPTION,
     packages=find_packages(),
     long_description=open('README.md').read(),
-    url='https://github.com/matej-tomik/appi-for-stock-screen-analyser',
+    url='https://github.com/matej-tomik/Stock_Evaluation_API',
     classifiers=[
         "Development Status :: 3 - Alpha",
         "Intended Audience :: Education",
@@ -25,6 +25,6 @@ setup(
         "Programming Language :: Python :: 3",
         "Operating System :: Microsoft :: Windows",
     ],
-    keywords=["python", "stock analysis"],
+    keywords=["python", "stock", "API"],
     install_requires=requirements,
 )
