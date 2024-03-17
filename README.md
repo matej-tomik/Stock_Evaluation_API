@@ -6,7 +6,18 @@ This API provides a convenient method for evaluating stocks based on their ticke
 ## Features
 - **Single Ticker Evaluation:** Input a single ticker symbol and receive evaluation results.
 - **Batch Processing:** Evaluate multiple tickers at once, receiving a dictionary with both successful and failed evaluation results.
-
+## Prerequisites
+Docker
+<br />
+## Installation
+To start Redis Stack server, run the following command:
+```bash
+docker run -d --name redis -p 6379:6379 -p 8001:8001 redis/redis-stack-server:latest
+```
+Then, to connect to the server using redis-cli, execute:
+```
+docker exec -it redis redis-cli
+```
 ## Usage
 To use the API, follow these steps:
 1. Clone the repository to your local machine.
@@ -57,15 +68,6 @@ To use the API, follow these steps:
     }
   }
   ```
-## Installation
-To start Redis Stack server, run the following command:
-```bash
-docker run -d --name redis -p 6379:6379 -p 8001:8001 redis/redis-stack-server:latest
-```
-Then, to connect to the server using redis-cli, execute:
-```
-docker exec -it redis redis-cli
-```
 ## License
 This project is licensed under the [MIT License](https://opensource.org/license/mit)).
 
