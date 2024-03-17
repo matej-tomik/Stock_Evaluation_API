@@ -26,7 +26,7 @@ To use the API, follow these steps:
   "ddm_advance": 50.67,
   "dcf": 70.74,
   "ddm": 77.41,
-  "ticker": "AAPl"
+  "ticker": "AAPL"
   }
   ```
 - **Batch Processing:** `/tickers`
