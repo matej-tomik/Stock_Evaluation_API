@@ -36,12 +36,12 @@ def store_stock(stock: dict):
 
 
 def analyse_stock(ticker: str, risk_free_rate: float) -> Tuple[dict, bool]:
-    # is_in_redis: bool = False
-    # if redis_database.exists(ticker) and redis_database.hget(ticker, 'date'):
-    #     print(redis_database.hget(ticker, 'date'), 'analyse stock')
-    #     if redis_database.hget(ticker, 'date').decode('utf-8') == get_current_time:
-    #         is_in_redis: bool = True
-    #         return {key.decode('utf-8'): value.decode('utf-8') for key, value in redis_database.hgetall(ticker).items()}, is_in_redis
+    is_in_redis: bool = False
+    if redis_database.exists(ticker) and redis_database.hget(ticker, 'date'):
+        print(redis_database.hget(ticker, 'date'), 'analyse stock')
+        if redis_database.hget(ticker, 'date').decode('utf-8') == get_current_time:
+            is_in_redis: bool = True
+            return {key.decode('utf-8'): value.decode('utf-8') for key, value in redis_database.hgetall(ticker).items()}, is_in_redis
     security = StockValuation(ticker, risk_free_rate)
     security.fetch_data()
     security.evaluate()
@@ -57,13 +57,9 @@ def analyse_stock(ticker: str, risk_free_rate: float) -> Tuple[dict, bool]:
     }, True)
 
 
-class Item(BaseModel):
-    item: str
-
-
-@app.get("/ticker")
-async def process_ticker(item: Item):
-    result, is_in_redis = analyse_stock(item.item, get_risk_free_rate())
+@app.get("/ticker/{ticker}")
+async def process_ticker(item: str):
+    result, is_in_redis = analyse_stock(item, get_risk_free_rate())
     if not is_in_redis:
         store_stock(result)
     return result 
