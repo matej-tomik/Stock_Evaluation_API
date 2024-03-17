@@ -16,9 +16,47 @@ To use the API, follow these steps:
 5. Receive evaluation results in the desired format.
 
 ## API Endpoints
-- **Single Ticker Evaluation:** `/evaluate/single/{ticker}`
-- **Batch Processing:** `/evaluate/batch`
-
+- **Single Ticker Evaluation:** `/ticker/{ticker}`
+  ### Response Syntax
+  ```JSON
+  {
+  "graham_num": 26.35,
+  "graham": 79.08,
+  "dcf_advance": 72.63,
+  "ddm_advance": 50.67,
+  "dcf": 70.74,
+  "ddm": 77.41,
+  "ticker": "AAPl"
+  }
+  ```
+- **Batch Processing:** `/tickers`
+  ### Response Syntax
+  ```JSON
+  {
+    "results": {
+      "AAPL": {
+        "graham_num": 26.35,
+        "graham": 79.08,
+        "dcf_advance": 72.63,
+        "ddm_advance": 50.67,
+        "dcf": 70.74,
+        "ddm": 77.41,
+        "ticker": "AAPL"
+      }
+    },
+    "failed": {
+      "GOOGL": {
+        "graham_num": 54.48,
+        "graham": 71.22,
+        "dcf_advance": 71.83,
+        "ddm_advance": "N/A",
+        "dcf": 70.98,
+        "ddm": "N/A",
+        "ticker": "GOOGL"
+      }
+    }
+  }
+  ```
 ## License
 This project is licensed under the [MIT License](https://opensource.org/license/mit)).
 
